@@ -1,10 +1,7 @@
-var express = require('express')
-var app = express()
+const express = require('express')
+const path = require('path')
+const PORT = 8000
 
-app.get('/', function (req, res) {
-  res.send('Hello World!')
-})
-
-app.listen(8000, function () {
-  console.log('Example app listening on port 8000!')
-})
+express()
+  .get('/', (req, res) => res.send('Hello World!'))
+  .listen(PORT, () => console.log(`Listening on ${ PORT }`))
