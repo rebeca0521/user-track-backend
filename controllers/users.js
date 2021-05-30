@@ -1,17 +1,25 @@
 var User = require('../models/userModel')
-const createError = require('http-errors');
-var dateFormat = require("dateformat");
+var dayjs = require('dayjs')
+const { validationResult } = require('express-validator');
+var utc = require('dayjs/plugin/utc')
+var timezone = require('dayjs/plugin/timezone')
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
-exports.add = async (req, res, next) => {
-    const data = req.body
-    if (data.phone == undefined || data.code == undefined) {
-        res.send(createError(422, '資料不完整'))
+exports.add = (req, res, next) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()) {
+        return res.status(422).json({message: errors.array()[0].msg})
     }
+    const data = req.body
     data.code = data.code.replace(/\s*/g,"")
+    if (data.time != undefined) {
+        data.time = dayjs.tz(data.time, 'Asia/Taipei').utc(true).format()
+    }
     var user = new User(data)
     user.save(function (err, result) {
         if (err) return next(err);
-        res.json({
+        return res.json({
             message: 'Saved successfully.',
             data: result
         })
@@ -23,6 +31,12 @@ exports.search = async (req, res, next) => {
     const code = req.query.code
     const limit = req.query.limit || 5
     const page = req.query.page || 1
+    let sort = req.query.sort || -1
+    if(sort == 'time') {
+        sort = 1
+    } else {
+        sort = -1
+    }
     let query = {$and: []}
     if (phone != undefined) {
         query['$and'].push({phone: phone})
@@ -33,9 +47,13 @@ exports.search = async (req, res, next) => {
     if(query['$and'][0] == undefined) {
         query = {}
     }
+
     const options = {
         page: page,
-        limit: limit
+        limit: limit,
+        sort: {
+            time: sort
+        }
     };
 
     User.paginate(
@@ -44,13 +62,17 @@ exports.search = async (req, res, next) => {
         function (err, result) {
             if (err) return next(err)
             result.message = 'success'
-            res.json(result)
+            return res.json(result)
         }
     ); 
 
 }
 
-exports.update = (req, res, next) => {
+exports.update = async (req, res, next) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()) {
+        return res.status(422).json({message: errors.array()[0].msg})
+    }
     const id = req.query.id
     const userData = req.body
     const updateData = {}
@@ -68,7 +90,7 @@ exports.update = (req, res, next) => {
     }
     User.findByIdAndUpdate(id, updateData, options, function(err, result) {
         if (err) return next(err);
-        res.json({
+        return res.json({
             message: 'Updated successfully.',
             data: result
         })
@@ -77,15 +99,13 @@ exports.update = (req, res, next) => {
 
 exports.searchByCode = (req, res, next) => {
     const code = req.param('code').replace(/\s*/g,"")
-    result = []
     User.find({ code: code }, 'phone time', async function (err, docs) {
         if (err) return next(err)
-        await docs.map((item) => {
-            time = dateFormat(item.time, "isoDateTime");
-            text = `${item.phone} at ${time}`
-            result.push(text)
+        docs = await docs.map((item) => {
+            time = dayjs(item.time).utc().format()
+            return `${item.phone} at ${time}`
         })
-        res.json(result)
+        return res.json(docs)
     });
 
 }
